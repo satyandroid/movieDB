@@ -69,7 +69,10 @@ public class HomeActivity extends AppCompatActivity
         } catch (IOException e1){
             e1.printStackTrace();
         } finally {
-            urlConnection.disconnect();
+            if(urlConnection != null){
+                urlConnection.disconnect();
+            }
+
         }
 
     }
