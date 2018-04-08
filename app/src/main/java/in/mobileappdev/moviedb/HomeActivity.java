@@ -1,7 +1,11 @@
 package in.mobileappdev.moviedb;
 
+import android.app.ProgressDialog;
+import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Movie;
+import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.StrictMode;
 import android.support.design.widget.FloatingActionButton;
@@ -19,6 +23,8 @@ import android.view.MenuItem;
 import android.widget.ImageView;
 import android.widget.Toast;
 
+import com.bumptech.glide.Glide;
+
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -31,17 +37,28 @@ import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
 
+import in.mobileappdev.moviedb.model.MovieResponse;
+import in.mobileappdev.moviedb.rest.MovieRestClient;
+import in.mobileappdev.moviedb.rest.MovieRestService;
+import okhttp3.ResponseBody;
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
+import retrofit2.Retrofit;
+
 public class HomeActivity extends AppCompatActivity
         implements NavigationView.OnNavigationItemSelectedListener {
 
+    private static final String TAG = HomeActivity.class.getSimpleName();
     ImageView imageView;
+    ProgressDialog progressDialog;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_home);
         Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
-
+        progressDialog = new ProgressDialog(this);
         imageView = findViewById(R.id.nwImage);
 
         StrictMode.ThreadPolicy policy = new StrictMode.ThreadPolicy.Builder().permitAll().build();
@@ -57,29 +74,10 @@ public class HomeActivity extends AppCompatActivity
         navigationView.setNavigationItemSelectedListener(this);
 
 
-        URL url = null;
-        HttpURLConnection urlConnection = null;
-        try {
-            url = new URL("http://media3.bollywoodhungama.in/wp-content/uploads/2016/03/430033947.jpg");
-            urlConnection = (HttpURLConnection) url.openConnection();
-            InputStream in = new BufferedInputStream(urlConnection.getInputStream());
-            getImage(in);
-        } catch (MalformedURLException e) {
-            e.printStackTrace();
-        } catch (IOException e1){
-            e1.printStackTrace();
-        } finally {
-            if(urlConnection != null){
-                urlConnection.disconnect();
-            }
-
-        }
-
     }
 
-    private void getImage(InputStream in) {
-       Bitmap img =  BitmapFactory.decodeStream(in);
-       imageView.setImageBitmap(img);
+    private Bitmap getImage(InputStream in) {
+       return BitmapFactory.decodeStream(in);
     }
 
     private void readStream(InputStream in) {
@@ -144,23 +142,99 @@ public class HomeActivity extends AppCompatActivity
     public boolean onNavigationItemSelected(MenuItem item) {
         // Handle navigation view item clicks here.
         int id = item.getItemId();
-
+        MovieRestService service = new MovieRestClient().getService();
+        MyTask myTask =new MyTask();
         if (id == R.id.nav_camera) {
-            // Handle the camera action
+            startActivity(new Intent(HomeActivity.this, PopularMovies.class));
         } else if (id == R.id.nav_gallery) {
-
+            myTask.execute("https://wallpapercave.com/wp/6Y1SC6L.jpg");
         } else if (id == R.id.nav_slideshow) {
-
+            myTask.execute("https://www.hdwallpapers.in/walls/spectrum_of_the_sky_hdtv_1080p-HD.jpg");
         } else if (id == R.id.nav_manage) {
+            //without converter factory -- >ResponseBody
 
+            service.getMovieById(550).enqueue(new Callback<ResponseBody>() {
+                @Override
+                public void onResponse(Call<ResponseBody> call, Response<ResponseBody> response) {
+                    Log.d(TAG, "OnResponse");
+                    response.body().byteStream();
+                }
+
+                @Override
+                public void onFailure(Call<ResponseBody> call, Throwable t) {
+                    Log.d(TAG, "onFailure");
+                }
+            });
+
+            imageView.setImageBitmap(null);
         } else if (id == R.id.nav_share) {
+            progressDialog.setMessage("Retrofit and Glide ");
+            progressDialog.show();
+            service.getMovieByIdUsingConverter(350312).enqueue(new Callback<MovieResponse>() {
+                @Override
+                public void onResponse(Call<MovieResponse> call, Response<MovieResponse> response) {
+                    progressDialog.dismiss();
+                    MovieResponse movieResponse = response.body();
+                    String bp = "https://image.tmdb.org/t/p/w500/"+movieResponse.getBackdropPath();
+                    Log.d(TAG, "backdrop : "+bp);
+                    Glide.with(HomeActivity.this).load(bp).into(imageView);
+                }
 
+                @Override
+                public void onFailure(Call<MovieResponse> call, Throwable t) {
+                    progressDialog.dismiss();
+                }
+            });
+            imageView.setImageBitmap(null);
         } else if (id == R.id.nav_send) {
-
+            imageView.setImageBitmap(null);
+            startActivity(new Intent(HomeActivity.this, MovieActivity.class));
         }
 
         DrawerLayout drawer = (DrawerLayout) findViewById(R.id.drawer_layout);
         drawer.closeDrawer(GravityCompat.START);
         return true;
+    }
+
+    private class MyTask extends AsyncTask<String, String, InputStream>{
+
+        @Override
+        protected InputStream doInBackground(String... strings) {
+            URL url = null;
+            HttpURLConnection urlConnection = null;
+            try {
+                url = new URL(strings[0]);
+                urlConnection = (HttpURLConnection) url.openConnection();
+                InputStream in = new BufferedInputStream(urlConnection.getInputStream());
+                return in;
+            } catch (MalformedURLException e) {
+                e.printStackTrace();
+            } catch (IOException e1){
+                e1.printStackTrace();
+            } finally {
+                if(urlConnection != null){
+                    urlConnection.disconnect();
+                }
+
+            }
+            return null;
+        }
+
+        @Override
+        protected void onPostExecute(InputStream is) {
+            super.onPostExecute(is);
+            progressDialog.dismiss();
+
+            Bitmap bitmap = getImage(is);
+            imageView.setImageBitmap(bitmap);
+
+        }
+
+        @Override
+        protected void onPreExecute() {
+            super.onPreExecute();
+            progressDialog.setMessage("Downloading.....");
+            progressDialog.show();
+        }
     }
 }
